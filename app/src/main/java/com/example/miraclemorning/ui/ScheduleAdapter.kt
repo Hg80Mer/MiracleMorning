@@ -1,10 +1,11 @@
 package com.example.miraclemorning.ui
 
-import android.app.TimePickerDialog
+import android.graphics.Paint
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.*
+import android.widget.CheckBox
+import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import com.example.miraclemorning.R
 import com.example.miraclemorning.data.Schedule
@@ -13,14 +14,14 @@ import com.example.miraclemorning.data.ScheduleDBHelper
 class ScheduleAdapter(
     private val list: MutableList<Schedule>,
     private val db: ScheduleDBHelper,
-    private val refresh: () -> Unit
+    private val refresh: () -> Unit,
+    private val onItemClick: (Schedule) -> Unit
 ) : RecyclerView.Adapter<ScheduleAdapter.ViewHolder>() {
 
     inner class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+        val cbDone: CheckBox = view.findViewById(R.id.cbDone)
         val tvContent: TextView = view.findViewById(R.id.tvContent)
         val tvTime: TextView = view.findViewById(R.id.tvTime)
-        val btnEdit: Button = view.findViewById(R.id.btnEdit)
-        val btnDelete: Button = view.findViewById(R.id.btnDelete)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -37,31 +38,21 @@ class ScheduleAdapter(
         holder.tvContent.text = item.content
         holder.tvTime.text = item.time
 
-        // [삭제 기능]
-        holder.btnDelete.setOnClickListener {
-            db.deleteSchedule(item.id)
+
+        holder.cbDone.setOnCheckedChangeListener(null)
+        holder.cbDone.isChecked = (item.isDone == 1)
+
+        val done = item.isDone == 1
+        holder.tvContent.paintFlags =
+            if (done) holder.tvContent.paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
+            else holder.tvContent.paintFlags and Paint.STRIKE_THRU_TEXT_FLAG.inv()
+        holder.itemView.alpha = if (done) 0.45f else 1f
+
+        holder.cbDone.setOnCheckedChangeListener { _, isChecked ->
+            db.updateDone(item.id, if (isChecked) 1 else 0)
             refresh()
         }
 
-        // [수정 기능]
-        holder.btnEdit.setOnClickListener {
-            val timeParts = item.time.split(":")
-            val initialHour = if (timeParts.size == 2) timeParts[0].toInt() else 7
-            val initialMinute = if (timeParts.size == 2) timeParts[1].toInt() else 0
-
-            TimePickerDialog(
-                holder.itemView.context,
-                { _, h, m ->
-                    val newTime = String.format("%02d:%02d", h, m)
-
-                    db.updateSchedule(item.id, item.date, newTime, item.content)
-
-                    refresh()
-                },
-                initialHour,
-                initialMinute,
-                true
-            ).show()
-        }
+        holder.itemView.setOnClickListener { onItemClick(item) }
     }
 }

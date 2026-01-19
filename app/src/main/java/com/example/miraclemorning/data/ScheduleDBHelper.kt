@@ -4,9 +4,12 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
 
 class ScheduleDBHelper(context: Context) :
-    SQLiteOpenHelper(context, "schedule.db", null, 1) {
+    SQLiteOpenHelper(context, "schedule.db", null, 2) {
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL(
@@ -14,31 +17,32 @@ class ScheduleDBHelper(context: Context) :
                     "id INTEGER PRIMARY KEY AUTOINCREMENT," +
                     "date TEXT," +
                     "time TEXT," +
-                    "content TEXT)"
+                    "content TEXT," +
+                    "isDone INTEGER DEFAULT 0" +
+                    ")"
         )
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        db.execSQL("DROP TABLE IF EXISTS schedule")
-        onCreate(db)
+        if (oldVersion < 2) {
+            db.execSQL("ALTER TABLE schedule ADD COLUMN isDone INTEGER DEFAULT 0")
+        }
     }
 
-    // insertSchedule 함수 정의 (Long 반환)
     fun insertSchedule(date: String, time: String, content: String): Long {
-        val db = writableDatabase
         val values = ContentValues().apply {
             put("date", date)
             put("time", time)
             put("content", content)
+            put("isDone", 0)
         }
-        return db.insert("schedule", null, values) // 성공: rowId, 실패: -1
+        return writableDatabase.insert("schedule", null, values)
     }
 
     fun getSchedulesByDate(date: String): List<Schedule> {
-        val db = readableDatabase
-        val cursor = db.query(
+        val cursor = readableDatabase.query(
             "schedule",
-            arrayOf("id", "date", "time", "content"),
+            arrayOf("id", "date", "time", "content", "isDone"),
             "date=?",
             arrayOf(date),
             null,
@@ -51,23 +55,73 @@ class ScheduleDBHelper(context: Context) :
             val id = cursor.getLong(cursor.getColumnIndexOrThrow("id"))
             val time = cursor.getString(cursor.getColumnIndexOrThrow("time"))
             val content = cursor.getString(cursor.getColumnIndexOrThrow("content"))
-            list.add(Schedule(id, date, time, content))
+            val isDone = cursor.getInt(cursor.getColumnIndexOrThrow("isDone"))
+            list.add(Schedule(id, date, time, content, isDone))
         }
         cursor.close()
         return list
     }
-    // ScheduleDBHelper 내부의 권장 형태
+
     fun updateSchedule(id: Long, date: String, time: String, content: String) {
-        val db = this.writableDatabase
-        val values = android.content.ContentValues().apply {
+        val values = ContentValues().apply {
             put("date", date)
             put("time", time)
             put("content", content)
         }
-        db.update("schedules", values, "id=?", arrayOf(id.toString()))
+        writableDatabase.update("schedule", values, "id=?", arrayOf(id.toString()))
+    }
+
+    fun updateDone(id: Long, isDone: Int) {
+        val values = ContentValues().apply { put("isDone", isDone) }
+        writableDatabase.update("schedule", values, "id=?", arrayOf(id.toString()))
     }
 
     fun deleteSchedule(id: Long) {
         writableDatabase.delete("schedule", "id=?", arrayOf(id.toString()))
+    }
+
+    /**
+     * ✅ 기간 루틴 등록: startDate~endDate 날짜 각각에 schedule row 생성
+     * 반환값: 생성된 개수
+     */
+    fun insertRoutineRange(startDate: String, endDate: String, time: String, content: String): Int {
+        val db = writableDatabase
+        db.beginTransaction()
+
+        var count = 0
+        try {
+            val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+            val start = Calendar.getInstance().apply { this.time = fmt.parse(startDate)!! }
+            val end = Calendar.getInstance().apply { this.time = fmt.parse(endDate)!! }
+
+            // start > end면 swap
+            if (start.after(end)) {
+                val tmp = start.time
+                start.time = end.time
+                end.time = tmp
+            }
+
+            while (!start.after(end)) {
+                val d = fmt.format(start.time)
+
+                val values = ContentValues().apply {
+                    put("date", d)
+                    put("time", time)
+                    put("content", content)
+                    put("isDone", 0)
+                }
+
+                val rowId = db.insert("schedule", null, values)
+                if (rowId != -1L) count++
+
+                start.add(Calendar.DAY_OF_MONTH, 1)
+            }
+
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+
+        return count
     }
 }
