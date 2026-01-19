@@ -81,8 +81,8 @@ class ScheduleDBHelper(context: Context) :
     }
 
     /**
-     * ✅ 기간 루틴 등록: startDate~endDate 날짜 각각에 schedule row 생성
-     * 반환값: 생성된 개수
+     * 기간 루틴 등록
+    
      */
     fun insertRoutineRange(startDate: String, endDate: String, time: String, content: String): Int {
         val db = writableDatabase
